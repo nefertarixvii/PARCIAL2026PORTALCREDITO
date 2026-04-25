@@ -5,7 +5,7 @@ using PlataformaCreditos.Data;
 var builder = WebApplication.CreateBuilder(args);
 
 // 🔹 Connection string
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
 
 // 🔹 DB SQLite
@@ -17,18 +17,35 @@ builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 // 🔹 Identity
 builder.Services.AddDefaultIdentity<IdentityUser>(options =>
 {
-    options.SignIn.RequireConfirmedAccount = false; // ⚠️ importante para pruebas
+    options.SignIn.RequireConfirmedAccount = false;
 })
 .AddEntityFrameworkStores<ApplicationDbContext>();
 
-// 🔹 Redis (CACHE)
-builder.Services.AddStackExchangeRedisCache(options =>
-{
-    options.Configuration = builder.Configuration["Redis:Connection"];
-});
+// 🔥 🔥 CACHE (INTELIGENTE: LOCAL vs RENDER)
 
-// 🔹 Sesiones
-builder.Services.AddSession();
+// 👉 Si existe Redis → úsalo
+var redisConnection = builder.Configuration["Redis:ConnectionString"];
+
+if (!string.IsNullOrEmpty(redisConnection))
+{
+    builder.Services.AddStackExchangeRedisCache(options =>
+    {
+        options.Configuration = redisConnection;
+    });
+}
+else
+{
+    // 👉 Si NO hay Redis → usa memoria (LOCAL)
+    builder.Services.AddDistributedMemoryCache();
+}
+
+// 🔹 SESIONES (BIEN CONFIGURADAS)
+builder.Services.AddSession(options =>
+{
+    options.IdleTimeout = TimeSpan.FromMinutes(30); // duración sesión
+    options.Cookie.HttpOnly = true;
+    options.Cookie.IsEssential = true;
+});
 
 // 🔹 MVC
 builder.Services.AddControllersWithViews();
@@ -47,23 +64,22 @@ else
 }
 
 app.UseHttpsRedirection();
+app.UseStaticFiles(); // 🔥 necesario
+
 app.UseRouting();
 
-// 🔹 ⚠️ ORDEN IMPORTANTE
-app.UseAuthentication(); // 👈 faltaba
+// 🔹 AUTH (orden correcto)
+app.UseAuthentication();
 app.UseAuthorization();
 
-// 🔹 Sesión
+// 🔹 SESIÓN (después de auth)
 app.UseSession();
 
-app.MapStaticAssets();
-
+// 🔹 Rutas
 app.MapControllerRoute(
     name: "default",
-    pattern: "{controller=Home}/{action=Index}/{id?}")
-    .WithStaticAssets();
+    pattern: "{controller=Home}/{action=Index}/{id?}");
 
-app.MapRazorPages()
-   .WithStaticAssets();
+app.MapRazorPages();
 
 app.Run();
