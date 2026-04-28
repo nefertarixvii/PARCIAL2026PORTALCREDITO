@@ -1,0 +1,23 @@
+@model PlataformaCreditos.Models.SolicitudCredito
+
+<h2>Detalle de Solicitud</h2>
+
+<div class="card">
+    <div class="card-body">
+
+        <p><strong>ID:</strong> @Model.Id</p>
+        <p><strong>Monto:</strong> @Model.MontoSolicitado</p>
+        <p><strong>Fecha:</strong> @Model.FechaSolicitud</p>
+        <p><strong>Estado:</strong> @Model.Estado</p>
+
+        @if (Model.Estado == PlataformaCreditos.Models.EstadoSolicitud.Rechazado)
+        {
+            <p><strong>Motivo:</strong> @Model.MotivoRechazo</p>
+        }
+
+    </div>
+</div>
+
+<br />
+
+<a asp-action="Index" class="btn btn-primary">Volver</a>

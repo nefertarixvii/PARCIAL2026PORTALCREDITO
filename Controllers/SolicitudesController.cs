@@ -2,8 +2,10 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
 using PlataformaCreditos.Data;
 using PlataformaCreditos.Models;
+using System.Text.Json;
 
 namespace PlataformaCreditos.Controllers
 {
@@ -12,17 +14,31 @@ namespace PlataformaCreditos.Controllers
     {
         private readonly ApplicationDbContext _context;
         private readonly UserManager<IdentityUser> _userManager;
+        private readonly IDistributedCache _cache;
 
-        public SolicitudesController(ApplicationDbContext context, UserManager<IdentityUser> userManager)
+        public SolicitudesController(
+            ApplicationDbContext context,
+            UserManager<IdentityUser> userManager,
+            IDistributedCache cache)
         {
             _context = context;
             _userManager = userManager;
+            _cache = cache;
         }
 
-        // 🔹 LISTADO
+        // 🔹 LISTADO CON CACHE
         public async Task<IActionResult> Index()
         {
             var userId = _userManager.GetUserId(User);
+            string cacheKey = "mis_solicitudes_" + userId;
+
+            var cacheData = await _cache.GetStringAsync(cacheKey);
+
+            if (cacheData != null)
+            {
+                var solicitudesCache = JsonSerializer.Deserialize<List<SolicitudCredito>>(cacheData);
+                return View(solicitudesCache);
+            }
 
             var cliente = await _context.Clientes
                 .Include(c => c.Solicitudes)
@@ -30,6 +46,13 @@ namespace PlataformaCreditos.Controllers
 
             if (cliente == null)
                 return View(new List<SolicitudCredito>());
+
+            await _cache.SetStringAsync(cacheKey,
+                JsonSerializer.Serialize(cliente.Solicitudes),
+                new DistributedCacheEntryOptions
+                {
+                    AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(60)
+                });
 
             return View(cliente.Solicitudes);
         }
@@ -40,7 +63,7 @@ namespace PlataformaCreditos.Controllers
             return View();
         }
 
-        // 🔹 CREAR SOLICITUD (AQUÍ ESTÁ TODO)
+        // 🔹 CREAR
         [HttpPost]
         public async Task<IActionResult> Crear(SolicitudCredito solicitud)
         {
@@ -56,19 +79,24 @@ namespace PlataformaCreditos.Controllers
                 return View(solicitud);
             }
 
-            // ❌ Regla 1: solo una pendiente
+            // ❌ Cliente activo
+            if (!cliente.Activo)
+            {
+                ModelState.AddModelError("", "Cliente inactivo");
+            }
+
+            // ❌ Solo una pendiente
             if (cliente.Solicitudes.Any(s => s.Estado == EstadoSolicitud.Pendiente))
             {
                 ModelState.AddModelError("", "Ya tienes una solicitud pendiente.");
             }
 
-            // ❌ Regla 2: capacidad de pago
-            if (solicitud.MontoSolicitado > cliente.IngresosMensuales * 5)
+            // ❌ Regla 10x ingresos
+            if (solicitud.MontoSolicitado > cliente.IngresosMensuales * 10)
             {
                 ModelState.AddModelError("", "El monto excede tu capacidad de pago.");
             }
 
-            // ❌ Validación básica
             if (solicitud.MontoSolicitado <= 0)
             {
                 ModelState.AddModelError("", "Monto inválido.");
@@ -83,6 +111,15 @@ namespace PlataformaCreditos.Controllers
 
             _context.Add(solicitud);
             await _context.SaveChangesAsync();
+
+            // ✅ Sesión
+            HttpContext.Session.SetString("UltimaSolicitud", solicitud.MontoSolicitado.ToString());
+
+            // ✅ Cache invalidar
+            await _cache.RemoveAsync("mis_solicitudes_" + userId);
+
+            // ✅ Mensaje éxito
+            TempData["Success"] = "Solicitud registrada correctamente";
 
             return RedirectToAction(nameof(Index));
         }
