@@ -21,11 +21,7 @@ builder.Services.AddDefaultIdentity<IdentityUser>(options =>
 })
 .AddEntityFrameworkStores<ApplicationDbContext>();
 
-// 🔹 Redis (CACHE)
-builder.Services.AddStackExchangeRedisCache(options =>
-{
-    options.Configuration = builder.Configuration["Redis:Connection"];
-});
+builder.Services.AddDistributedMemoryCache();
 
 // 🔹 Sesiones
 builder.Services.AddSession();

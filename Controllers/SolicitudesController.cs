@@ -47,14 +47,16 @@ namespace PlataformaCreditos.Controllers
             if (cliente == null)
                 return View(new List<SolicitudCredito>());
 
+            var solicitudes = cliente.Solicitudes ?? new List<SolicitudCredito>();
+
             await _cache.SetStringAsync(cacheKey,
-                JsonSerializer.Serialize(cliente.Solicitudes),
+                JsonSerializer.Serialize(solicitudes),
                 new DistributedCacheEntryOptions
                 {
                     AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(60)
                 });
 
-            return View(cliente.Solicitudes);
+            return View(solicitudes);
         }
 
         // 🔹 FORMULARIO
@@ -73,11 +75,21 @@ namespace PlataformaCreditos.Controllers
                 .Include(c => c.Solicitudes)
                 .FirstOrDefaultAsync(c => c.UsuarioId == userId);
 
+            // 🔥 SOLUCIÓN CLAVE: crear cliente si no existe
             if (cliente == null)
             {
-                ModelState.AddModelError("", "Cliente no encontrado");
-                return View(solicitud);
+                cliente = new Cliente
+                {
+                    UsuarioId = userId,
+                    IngresosMensuales = 1000, // valor base para pruebas
+                    Activo = true
+                };
+
+                _context.Clientes.Add(cliente);
+                await _context.SaveChangesAsync();
             }
+
+            var solicitudes = cliente.Solicitudes ?? new List<SolicitudCredito>();
 
             // ❌ Cliente activo
             if (!cliente.Activo)
@@ -86,7 +98,7 @@ namespace PlataformaCreditos.Controllers
             }
 
             // ❌ Solo una pendiente
-            if (cliente.Solicitudes.Any(s => s.Estado == EstadoSolicitud.Pendiente))
+            if (solicitudes.Any(s => s.Estado == EstadoSolicitud.Pendiente))
             {
                 ModelState.AddModelError("", "Ya tienes una solicitud pendiente.");
             }
