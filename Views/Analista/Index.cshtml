@@ -1,0 +1,55 @@
+@model IEnumerable<PlataformaCreditos.Models.SolicitudCredito>
+
+<h2>Panel Analista</h2>
+
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success">
+        @TempData["Success"]
+    </div>
+}
+
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger">
+        @TempData["Error"]
+    </div>
+}
+
+<table class="table">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Monto</th>
+            <th>Fecha</th>
+            <th>Estado</th>
+            <th>Acciones</th>
+        </tr>
+    </thead>
+
+    <tbody>
+    @foreach (var item in Model)
+    {
+        <tr>
+            <td>@item.Id</td>
+            <td>@item.MontoSolicitado</td>
+            <td>@item.FechaSolicitud</td>
+            <td>@item.Estado</td>
+
+            <td>
+                <a asp-action="Aprobar"
+                   asp-route-id="@item.Id"
+                   class="btn btn-success">
+                   Aprobar
+                </a>
+
+                <a asp-action="Rechazar"
+                   asp-route-id="@item.Id"
+                   class="btn btn-danger">
+                   Rechazar
+                </a>
+            </td>
+        </tr>
+    }
+    </tbody>
+</table>

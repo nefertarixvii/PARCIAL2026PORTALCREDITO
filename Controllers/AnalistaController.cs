@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
 using PlataformaCreditos.Data;
 using PlataformaCreditos.Models;
 
@@ -10,12 +11,17 @@ namespace PlataformaCreditos.Controllers
     public class AnalistaController : Controller
     {
         private readonly ApplicationDbContext _context;
+        private readonly IDistributedCache _cache;
 
-        public AnalistaController(ApplicationDbContext context)
+        public AnalistaController(
+            ApplicationDbContext context,
+            IDistributedCache cache)
         {
             _context = context;
+            _cache = cache;
         }
 
+        // 🔹 LISTAR PENDIENTES
         public async Task<IActionResult> Index()
         {
             var pendientes = await _context.Solicitudes
@@ -26,41 +32,115 @@ namespace PlataformaCreditos.Controllers
             return View(pendientes);
         }
 
+        // 🔹 APROBAR
         public async Task<IActionResult> Aprobar(int id)
         {
             var solicitud = await _context.Solicitudes
                 .Include(s => s.Cliente)
                 .FirstOrDefaultAsync(s => s.Id == id);
 
-            if (solicitud == null || solicitud.Estado != EstadoSolicitud.Pendiente)
-                return BadRequest("Solicitud inválida");
+            // ❌ Solicitud inválida
+            if (solicitud == null)
+            {
+                TempData["Error"] = "Solicitud no encontrada";
+                return RedirectToAction(nameof(Index));
+            }
 
-            if (solicitud.MontoSolicitado > solicitud.Cliente.IngresosMensuales * 5)
-                return BadRequest("No cumple capacidad de pago");
+            // ❌ Ya procesada
+            if (solicitud.Estado != EstadoSolicitud.Pendiente)
+            {
+                TempData["Error"] =
+                    "La solicitud ya fue procesada";
+
+                return RedirectToAction(nameof(Index));
+            }
+
+            // ❌ Regla 5x ingresos
+            if (solicitud.MontoSolicitado >
+                solicitud.Cliente!.IngresosMensuales * 5)
+            {
+                TempData["Error"] =
+                    "No cumple capacidad de pago";
+
+                return RedirectToAction(nameof(Index));
+            }
 
             solicitud.Estado = EstadoSolicitud.Aprobado;
+
             await _context.SaveChangesAsync();
 
-            return RedirectToAction("Index");
+            // ✅ Invalidar cache
+            await _cache.RemoveAsync(
+                "mis_solicitudes_" + solicitud.Cliente.UsuarioId);
+
+            TempData["Success"] =
+                "Solicitud aprobada correctamente";
+
+            return RedirectToAction(nameof(Index));
         }
 
-        [HttpPost]
-        public async Task<IActionResult> Rechazar(int id, string motivo)
+        // 🔹 FORM RECHAZAR
+        public async Task<IActionResult> Rechazar(int id)
         {
-            var solicitud = await _context.Solicitudes.FindAsync(id);
+            var solicitud = await _context.Solicitudes
+                .FirstOrDefaultAsync(s => s.Id == id);
 
-            if (solicitud == null || solicitud.Estado != EstadoSolicitud.Pendiente)
-                return BadRequest("Solicitud inválida");
+            if (solicitud == null)
+            {
+                return NotFound();
+            }
 
-            if (string.IsNullOrEmpty(motivo))
-                return BadRequest("Motivo obligatorio");
+            return View(solicitud);
+        }
+
+        // 🔹 RECHAZAR POST
+        [HttpPost]
+        public async Task<IActionResult> Rechazar(
+            int id,
+            string motivo)
+        {
+            var solicitud = await _context.Solicitudes
+                .Include(s => s.Cliente)
+                .FirstOrDefaultAsync(s => s.Id == id);
+
+            // ❌ inválida
+            if (solicitud == null)
+            {
+                TempData["Error"] = "Solicitud inválida";
+                return RedirectToAction(nameof(Index));
+            }
+
+            // ❌ Ya procesada
+            if (solicitud.Estado != EstadoSolicitud.Pendiente)
+            {
+                TempData["Error"] =
+                    "La solicitud ya fue procesada";
+
+                return RedirectToAction(nameof(Index));
+            }
+
+            // ❌ Motivo obligatorio
+            if (string.IsNullOrWhiteSpace(motivo))
+            {
+                TempData["Error"] =
+                    "Motivo obligatorio";
+
+                return View(solicitud);
+            }
 
             solicitud.Estado = EstadoSolicitud.Rechazado;
             solicitud.MotivoRechazo = motivo;
 
             await _context.SaveChangesAsync();
 
-            return RedirectToAction("Index");
+            // ✅ invalidar cache
+            await _cache.RemoveAsync(
+                "mis_solicitudes_" + solicitud.Cliente!.UsuarioId);
+
+            TempData["Success"] =
+                "Solicitud rechazada correctamente";
+
+            return RedirectToAction(nameof(Index));
         }
     }
 }

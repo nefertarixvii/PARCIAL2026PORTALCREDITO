@@ -1,0 +1,25 @@
+@model PlataformaCreditos.Models.SolicitudCredito
+
+<h2>Rechazar Solicitud</h2>
+
+<form asp-action="Rechazar" method="post">
+
+    <input type="hidden"
+           name="id"
+           value="@Model.Id" />
+
+    <div class="mb-3">
+        <label class="form-label">
+            Motivo Rechazo
+        </label>
+
+        <textarea name="motivoRechazo"
+                  class="form-control"></textarea>
+    </div>
+
+    <button type="submit"
+            class="btn btn-danger">
+        Rechazar
+    </button>
+
+</form>

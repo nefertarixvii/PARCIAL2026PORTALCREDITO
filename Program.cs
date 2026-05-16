@@ -5,8 +5,10 @@ using PlataformaCreditos.Data;
 var builder = WebApplication.CreateBuilder(args);
 
 // 🔹 Connection string
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
-    ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
+var connectionString = builder.Configuration
+    .GetConnectionString("DefaultConnection")
+    ?? throw new InvalidOperationException(
+        "Connection string 'DefaultConnection' not found.");
 
 // 🔹 DB SQLite
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
@@ -14,18 +16,20 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
-// 🔹 Identity
+// 🔹 Identity + Roles
 builder.Services.AddDefaultIdentity<IdentityUser>(options =>
 {
     options.SignIn.RequireConfirmedAccount = false;
 })
+.AddRoles<IdentityRole>()
 .AddEntityFrameworkStores<ApplicationDbContext>();
 
-// 🔥 🔥 CACHE (INTELIGENTE: LOCAL vs RENDER)
+// 🔥 CACHE (LOCAL O REDIS)
 
-// 👉 Si existe Redis → úsalo
-var redisConnection = builder.Configuration["Redis:ConnectionString"];
+var redisConnection =
+    builder.Configuration["Redis:ConnectionString"];
 
+// 👉 Render con Redis
 if (!string.IsNullOrEmpty(redisConnection))
 {
     builder.Services.AddStackExchangeRedisCache(options =>
@@ -35,15 +39,17 @@ if (!string.IsNullOrEmpty(redisConnection))
 }
 else
 {
-    // 👉 Si NO hay Redis → usa memoria (LOCAL)
+    // 👉 Local sin Redis
     builder.Services.AddDistributedMemoryCache();
 }
 
-// 🔹 SESIONES (BIEN CONFIGURADAS)
+// 🔹 Sesiones
 builder.Services.AddSession(options =>
 {
-    options.IdleTimeout = TimeSpan.FromMinutes(30); // duración sesión
+    options.IdleTimeout = TimeSpan.FromMinutes(30);
+
     options.Cookie.HttpOnly = true;
+
     options.Cookie.IsEssential = true;
 });
 
@@ -51,6 +57,48 @@ builder.Services.AddSession(options =>
 builder.Services.AddControllersWithViews();
 
 var app = builder.Build();
+
+// 🔹 CREAR ROL Y USUARIO ANALISTA
+using (var scope = app.Services.CreateScope())
+{
+    var roleManager =
+        scope.ServiceProvider
+        .GetRequiredService<RoleManager<IdentityRole>>();
+
+    var userManager =
+        scope.ServiceProvider
+        .GetRequiredService<UserManager<IdentityUser>>();
+
+    // 🔹 Crear rol Analista
+    if (!await roleManager.RoleExistsAsync("Analista"))
+    {
+        await roleManager.CreateAsync(
+            new IdentityRole("Analista"));
+    }
+
+    // 🔹 Usuario analista
+    string email = "analista@test.com";
+    string password = "Analista123!";
+
+    var user =
+        await userManager.FindByEmailAsync(email);
+
+    if (user == null)
+    {
+        user = new IdentityUser
+        {
+            UserName = email,
+            Email = email,
+            EmailConfirmed = true
+        };
+
+        await userManager.CreateAsync(user, password);
+
+        await userManager.AddToRoleAsync(
+            user,
+            "Analista");
+    }
+}
 
 // 🔹 Pipeline
 if (app.Environment.IsDevelopment())
@@ -60,19 +108,22 @@ if (app.Environment.IsDevelopment())
 else
 {
     app.UseExceptionHandler("/Home/Error");
+
     app.UseHsts();
 }
 
 app.UseHttpsRedirection();
-app.UseStaticFiles(); // 🔥 necesario
+
+app.UseStaticFiles();
 
 app.UseRouting();
 
-// 🔹 AUTH (orden correcto)
+// 🔹 AUTH
 app.UseAuthentication();
+
 app.UseAuthorization();
 
-// 🔹 SESIÓN (después de auth)
+// 🔹 SESSION
 app.UseSession();
 
 // 🔹 Rutas
