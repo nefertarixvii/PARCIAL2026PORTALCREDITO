@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: PARCIAL2026PORTALCREDITO
+    env: docker
+    plan: free
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: ASPNETCORE_URLS
+        value: http://+:10000
