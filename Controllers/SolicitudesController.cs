@@ -30,24 +30,39 @@ namespace PlataformaCreditos.Controllers
         public async Task<IActionResult> Index()
         {
             var userId = _userManager.GetUserId(User);
+
+            if (string.IsNullOrEmpty(userId))
+            {
+                return RedirectToAction("Login", "Account");
+            }
+
             string cacheKey = "mis_solicitudes_" + userId;
 
             var cacheData = await _cache.GetStringAsync(cacheKey);
 
-            if (cacheData != null)
+            // ✅ CACHE
+            if (!string.IsNullOrEmpty(cacheData))
             {
-                var solicitudesCache = JsonSerializer.Deserialize<List<SolicitudCredito>>(cacheData);
-                return View(solicitudesCache);
+                var solicitudesCache =
+                    JsonSerializer.Deserialize<List<SolicitudCredito>>(cacheData);
+
+                return View(solicitudesCache ?? new List<SolicitudCredito>());
             }
+
+            Console.WriteLine("CONSULTANDO BD...");
 
             var cliente = await _context.Clientes
                 .Include(c => c.Solicitudes)
                 .FirstOrDefaultAsync(c => c.UsuarioId == userId);
 
             if (cliente == null)
+            {
                 return View(new List<SolicitudCredito>());
+            }
 
-            await _cache.SetStringAsync(cacheKey,
+            // ✅ GUARDAR CACHE
+            await _cache.SetStringAsync(
+                cacheKey,
                 JsonSerializer.Serialize(cliente.Solicitudes),
                 new DistributedCacheEntryOptions
                 {
@@ -63,63 +78,99 @@ namespace PlataformaCreditos.Controllers
             return View();
         }
 
-        // 🔹 CREAR
+        // 🔹 CREAR SOLICITUD
         [HttpPost]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> Crear(SolicitudCredito solicitud)
         {
+            // ✅ Evita error Cliente requerido
+            ModelState.Remove("Cliente");
+
             var userId = _userManager.GetUserId(User);
+
+            if (string.IsNullOrEmpty(userId))
+            {
+                return RedirectToAction("Login", "Account");
+            }
 
             var cliente = await _context.Clientes
                 .Include(c => c.Solicitudes)
                 .FirstOrDefaultAsync(c => c.UsuarioId == userId);
 
+            // ✅ CREAR CLIENTE AUTOMÁTICO
             if (cliente == null)
             {
-                ModelState.AddModelError("", "Cliente no encontrado");
-                return View(solicitud);
+                cliente = new Cliente
+                {
+                    UsuarioId = userId,
+                    IngresosMensuales = 1000,
+                    Activo = true,
+                    Solicitudes = new List<SolicitudCredito>()
+                };
+
+                _context.Clientes.Add(cliente);
+                await _context.SaveChangesAsync();
+
+                // 🔥 RECARGAR CLIENTE
+                cliente = await _context.Clientes
+                    .Include(c => c.Solicitudes)
+                    .FirstOrDefaultAsync(c => c.UsuarioId == userId);
             }
 
-            // ❌ Cliente activo
-            if (!cliente.Activo)
+            // ❌ Cliente inactivo
+            if (!cliente!.Activo)
             {
-                ModelState.AddModelError("", "Cliente inactivo");
+                ModelState.AddModelError("", "Cliente inactivo.");
             }
 
-            // ❌ Solo una pendiente
-            if (cliente.Solicitudes.Any(s => s.Estado == EstadoSolicitud.Pendiente))
+            // ❌ Solo una solicitud pendiente
+            if (cliente.Solicitudes.Any(s =>
+                s.Estado == EstadoSolicitud.Pendiente))
             {
-                ModelState.AddModelError("", "Ya tienes una solicitud pendiente.");
+                ModelState.AddModelError("",
+                    "Ya tienes una solicitud pendiente.");
+            }
+
+            // ❌ Monto inválido
+            if (solicitud.MontoSolicitado <= 0)
+            {
+                ModelState.AddModelError("",
+                    "El monto debe ser mayor a 0.");
             }
 
             // ❌ Regla 10x ingresos
-            if (solicitud.MontoSolicitado > cliente.IngresosMensuales * 10)
+            if (solicitud.MontoSolicitado >
+                cliente.IngresosMensuales * 10)
             {
-                ModelState.AddModelError("", "El monto excede tu capacidad de pago.");
-            }
-
-            if (solicitud.MontoSolicitado <= 0)
-            {
-                ModelState.AddModelError("", "Monto inválido.");
+                ModelState.AddModelError("",
+                    "El monto excede el límite permitido.");
             }
 
             if (!ModelState.IsValid)
+            {
                 return View(solicitud);
+            }
 
+            // ✅ CREAR SOLICITUD
             solicitud.ClienteId = cliente.Id;
             solicitud.FechaSolicitud = DateTime.Now;
             solicitud.Estado = EstadoSolicitud.Pendiente;
 
-            _context.Add(solicitud);
+            _context.Solicitudes.Add(solicitud);
+
             await _context.SaveChangesAsync();
 
-            // ✅ Sesión
-            HttpContext.Session.SetString("UltimaSolicitud", solicitud.MontoSolicitado.ToString());
+            // ✅ SESIÓN
+            HttpContext.Session.SetString(
+                "UltimaSolicitud",
+                solicitud.MontoSolicitado.ToString());
 
-            // ✅ Cache invalidar
+            // ✅ INVALIDAR CACHE
             await _cache.RemoveAsync("mis_solicitudes_" + userId);
 
-            // ✅ Mensaje éxito
-            TempData["Success"] = "Solicitud registrada correctamente";
+            // ✅ MENSAJE
+            TempData["Success"] =
+                "Solicitud registrada correctamente.";
 
             return RedirectToAction(nameof(Index));
         }
@@ -132,7 +183,9 @@ namespace PlataformaCreditos.Controllers
                 .FirstOrDefaultAsync(s => s.Id == id);
 
             if (solicitud == null)
+            {
                 return NotFound();
+            }
 
             return View(solicitud);
         }
