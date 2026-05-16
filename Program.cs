@@ -11,7 +11,7 @@ var connectionString =
 
 // 🔹 DB SQLite
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlite(connectionString));
+    options.UseNpgsql(connectionString));
 
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 

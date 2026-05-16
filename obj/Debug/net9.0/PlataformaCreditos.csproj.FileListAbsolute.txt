@@ -295,3 +295,5 @@ C:\Users\ar\PlataformaCreditos\obj\Debug\net9.0\refint\PlataformaCreditos.dll
 C:\Users\ar\PlataformaCreditos\obj\Debug\net9.0\PlataformaCreditos.pdb
 C:\Users\ar\PlataformaCreditos\obj\Debug\net9.0\PlataformaCreditos.genruntimeconfig.cache
 C:\Users\ar\PlataformaCreditos\obj\Debug\net9.0\ref\PlataformaCreditos.dll
+C:\Users\ar\PlataformaCreditos\bin\Debug\net9.0\Npgsql.dll
+C:\Users\ar\PlataformaCreditos\bin\Debug\net9.0\Npgsql.EntityFrameworkCore.PostgreSQL.dll
