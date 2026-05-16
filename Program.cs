@@ -40,12 +40,21 @@ builder.Services.AddControllersWithViews();
 var app = builder.Build();
 
 // 🔹 Crear DB automáticamente
-using (var scope = app.Services.CreateScope())
+try
 {
+    using var scope = app.Services.CreateScope();
+
     var db = scope.ServiceProvider
         .GetRequiredService<ApplicationDbContext>();
 
-    db.Database.Migrate();
+    db.Database.EnsureCreated();
+
+    Console.WriteLine("Base de datos creada correctamente.");
+}
+catch (Exception ex)
+{
+    Console.WriteLine("ERROR BD:");
+    Console.WriteLine(ex.Message);
 }
 
 // 🔹 Pipeline
@@ -56,11 +65,13 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
 app.UseStaticFiles();
 
 app.UseRouting();
 
 app.UseAuthentication();
+
 app.UseAuthorization();
 
 app.UseSession();
