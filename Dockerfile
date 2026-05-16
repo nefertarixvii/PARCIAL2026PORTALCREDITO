@@ -15,4 +15,5 @@ ENV ASPNETCORE_URLS=http://+:10000
 
 EXPOSE 10000
 
-ENTRYPOINT ["dotnet", "PlataformaCreditos.dll"]
+# 🔥 aplicar migraciones automáticamente
+ENTRYPOINT ["sh", "-c", "dotnet ef database update && dotnet PlataformaCreditos.dll"]
