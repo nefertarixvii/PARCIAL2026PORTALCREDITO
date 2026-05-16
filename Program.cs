@@ -1,13 +1,13 @@
 using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using PlataformaCreditos.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // 🔹 Connection string
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
-    ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
+var connectionString =
+    builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? "Data Source=app.db";
 
 // 🔹 DB SQLite
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
@@ -23,22 +23,10 @@ builder.Services.AddDefaultIdentity<IdentityUser>(options =>
 .AddRoles<IdentityRole>()
 .AddEntityFrameworkStores<ApplicationDbContext>();
 
-// 🔥 CACHE
-var redisConnection = builder.Configuration["Redis:ConnectionString"];
+// 🔹 Cache local
+builder.Services.AddDistributedMemoryCache();
 
-if (!string.IsNullOrEmpty(redisConnection))
-{
-    builder.Services.AddStackExchangeRedisCache(options =>
-    {
-        options.Configuration = redisConnection;
-    });
-}
-else
-{
-    builder.Services.AddDistributedMemoryCache();
-}
-
-// 🔹 Sesiones
+// 🔹 Session
 builder.Services.AddSession(options =>
 {
     options.IdleTimeout = TimeSpan.FromMinutes(30);
@@ -51,46 +39,7 @@ builder.Services.AddControllersWithViews();
 
 var app = builder.Build();
 
-// 🔥 IMPORTANTE PARA RENDER
-app.UseForwardedHeaders(new ForwardedHeadersOptions
-{
-    ForwardedHeaders =
-        ForwardedHeaders.XForwardedFor |
-        ForwardedHeaders.XForwardedProto
-});
-
-// 🔹 Pipeline
-if (app.Environment.IsDevelopment())
-{
-    app.UseMigrationsEndPoint();
-}
-else
-{
-    app.UseExceptionHandler("/Home/Error");
-    app.UseHsts();
-}
-
-app.UseHttpsRedirection();
-
-app.UseStaticFiles();
-
-app.UseRouting();
-
-// 🔹 AUTH
-app.UseAuthentication();
-app.UseAuthorization();
-
-// 🔹 Session
-app.UseSession();
-
-// 🔹 Rutas
-app.MapControllerRoute(
-    name: "default",
-    pattern: "{controller=Home}/{action=Index}/{id?}");
-
-app.MapRazorPages();
-
-// 🔥 Migraciones automáticas
+// 🔹 Crear DB automáticamente
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider
@@ -98,5 +47,28 @@ using (var scope = app.Services.CreateScope())
 
     db.Database.Migrate();
 }
+
+// 🔹 Pipeline
+if (!app.Environment.IsDevelopment())
+{
+    app.UseExceptionHandler("/Home/Error");
+    app.UseHsts();
+}
+
+app.UseHttpsRedirection();
+app.UseStaticFiles();
+
+app.UseRouting();
+
+app.UseAuthentication();
+app.UseAuthorization();
+
+app.UseSession();
+
+app.MapControllerRoute(
+    name: "default",
+    pattern: "{controller=Home}/{action=Index}/{id?}");
+
+app.MapRazorPages();
 
 app.Run();
