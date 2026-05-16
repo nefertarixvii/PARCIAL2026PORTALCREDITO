@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using PlataformaCreditos.Data;
 
@@ -14,16 +15,15 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
-// 🔹 Identity
+// 🔹 Identity + Roles
 builder.Services.AddDefaultIdentity<IdentityUser>(options =>
 {
     options.SignIn.RequireConfirmedAccount = false;
 })
+.AddRoles<IdentityRole>()
 .AddEntityFrameworkStores<ApplicationDbContext>();
 
-// 🔥 🔥 CACHE (INTELIGENTE: LOCAL vs RENDER)
-
-// 👉 Si existe Redis → úsalo
+// 🔥 CACHE
 var redisConnection = builder.Configuration["Redis:ConnectionString"];
 
 if (!string.IsNullOrEmpty(redisConnection))
@@ -35,14 +35,13 @@ if (!string.IsNullOrEmpty(redisConnection))
 }
 else
 {
-    // 👉 Si NO hay Redis → usa memoria (LOCAL)
     builder.Services.AddDistributedMemoryCache();
 }
 
-// 🔹 SESIONES (BIEN CONFIGURADAS)
+// 🔹 Sesiones
 builder.Services.AddSession(options =>
 {
-    options.IdleTimeout = TimeSpan.FromMinutes(30); // duración sesión
+    options.IdleTimeout = TimeSpan.FromMinutes(30);
     options.Cookie.HttpOnly = true;
     options.Cookie.IsEssential = true;
 });
@@ -51,6 +50,14 @@ builder.Services.AddSession(options =>
 builder.Services.AddControllersWithViews();
 
 var app = builder.Build();
+
+// 🔥 IMPORTANTE PARA RENDER
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders =
+        ForwardedHeaders.XForwardedFor |
+        ForwardedHeaders.XForwardedProto
+});
 
 // 🔹 Pipeline
 if (app.Environment.IsDevelopment())
@@ -64,15 +71,16 @@ else
 }
 
 app.UseHttpsRedirection();
-app.UseStaticFiles(); // 🔥 necesario
+
+app.UseStaticFiles();
 
 app.UseRouting();
 
-// 🔹 AUTH (orden correcto)
+// 🔹 AUTH
 app.UseAuthentication();
 app.UseAuthorization();
 
-// 🔹 SESIÓN (después de auth)
+// 🔹 Session
 app.UseSession();
 
 // 🔹 Rutas
@@ -82,6 +90,7 @@ app.MapControllerRoute(
 
 app.MapRazorPages();
 
+// 🔥 Migraciones automáticas
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider
@@ -89,4 +98,5 @@ using (var scope = app.Services.CreateScope())
 
     db.Database.Migrate();
 }
+
 app.Run();
