@@ -1,3 +1,4 @@
+# Cache breaker para forzar la lectura del nuevo Program.cs - Parcial 2026
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /app
 
